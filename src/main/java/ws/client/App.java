@@ -10,7 +10,7 @@ import org.java_websocket.client.WebSocketClient;
  */
 public class App {
 	public static void main(String[] args) throws URISyntaxException {		
-		WebSocketClient client = new EmptyClient(new URI("ws://192.168.0.102:8887"));
+		WebSocketClient client = new EmptyClient(new URI("ws://10.100.70.60:8887"));
 		client.connect();
 	}
 }
