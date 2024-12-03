@@ -70,30 +70,30 @@ public class EmptyClient extends WebSocketClient {
     public void onMessage(ByteBuffer message) {
         boolean isLast = false;
         logger.info(message.toString());
-        // try {
-        //     logger.info("Writing to file : " + message.remaining());
-        //     byte[] data = new byte[message.remaining()];
-        //     if (message.remaining() < 10240) {
-        //         isLast = true;
-        //     }
+        try {
+            logger.info("Writing to file : " + message.remaining());
+            byte[] data = new byte[message.remaining()];
+            if (message.remaining() < 10240) {
+                isLast = true;
+            }
 
         //     //4byte int
         //     //ada protokol
         //     //signature : 
-        //     // sha512, chunk size, hashing 
+        //     // sha512, chunk size, hashing, file size
 
-        //     message.get(data);
-        //     fos.write(data);
+            message.get(data);
+            fos.write(data);
 
-        //     if (isLast) {
-        //         logger.info("File received");
-        //         logger.info("FOS closed");
-        //         fos.close();
-        //     }
-        // } catch (Exception e) {
-        //     logger.error("Error occured during receiving file");
-        //     e.printStackTrace();
-        // }
+            if (isLast) {
+                logger.info("File received");
+                logger.info("FOS closed");
+                fos.close();
+            }
+        } catch (Exception e) {
+            logger.error("Error occured during receiving file");
+            e.printStackTrace();
+        }
     }
 
     // @Override
