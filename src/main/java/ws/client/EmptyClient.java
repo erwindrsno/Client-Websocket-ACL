@@ -1,12 +1,23 @@
 package ws.client;
 
+import java.io.ByteArrayInputStream;
 import java.io.FileOutputStream;
+import java.io.ObjectInputStream;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.AclEntry;
+import java.nio.file.attribute.AclEntryFlag;
+import java.nio.file.attribute.AclEntryPermission;
+import java.nio.file.attribute.AclEntryType;
+import java.nio.file.attribute.AclFileAttributeView;
+import java.nio.file.attribute.UserPrincipal;
+import java.util.Base64;
+import java.util.List;
+import java.util.Set;
 
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.drafts.Draft;
@@ -15,12 +26,19 @@ import org.java_websocket.handshake.ServerHandshake;
 import org.slf4j.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.hash.Hashing;
 
 public class EmptyClient extends WebSocketClient {
-    Path sourcePath = Paths.get("toBeReceived");
+    Path toBeReceived = Paths.get("toBeReceived");
     FileOutputStream fos;
-    IAcl aclSetter;
     Logger logger = LoggerFactory.getLogger(EmptyClient.class);
+
+    boolean readyToReceiveFile = false;
+
+    byte[] fileBytes; //complete file in bytes
+    int currIdx = 0;
+    long fileSize;
+    long chunkSize;
 
     public EmptyClient(URI serverUri, Draft draft) {
         super(serverUri, draft);
@@ -32,88 +50,107 @@ public class EmptyClient extends WebSocketClient {
 
     @Override
     public void onOpen(ServerHandshake handshakedata) {
-        try {
-            logger.info("Connected to server : " + handshakedata.getHttpStatusMessage());
-            fos = new FileOutputStream(sourcePath.toFile());
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        logger.info("Connected to server : " + handshakedata.getHttpStatusMessage());
     }
 
     @Override
-    public void onMessage(String message) {
+    public void onMessage(String message){
         if(message.equals("PING")){
             send("PONG");
         }
-        // logger.info(json);
-        // ObjectMapper mapper = new ObjectMapper();
-        // try {
-        //     UserFile userFile = mapper.readValue(json, UserFile.class);
-        //     Path targetPath = Paths.get(userFile.getFilePath());
-        //     String user = userFile.getUser();
-
-        //     // file rename
-        //     //sourcePath is created beforehand
-        //     Files.move(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
-
-
-        //     this.aclSetter = new Acl();
-        //     this.aclSetter.setRwxAcl(targetPath, user);
-        //     logger.info("ACL set");
-        // } catch (Exception e) {
-        //     logger.info("error occured during setting ACL");
-        //     e.printStackTrace();
-        // }
-    }
-
-    @Override
-    public void onMessage(ByteBuffer message) {
-        boolean isLast = false;
-        logger.info(message.toString());
-        try {
-            logger.info("Writing to file : " + message.remaining());
-            byte[] data = new byte[message.remaining()];
-            if (message.remaining() < 10240) {
-                isLast = true;
+        else if(message.startsWith("PRE-METADATA~")){
+            try{
+                fos = new FileOutputStream(toBeReceived.toFile());
+            } catch (Exception e){
+                e.printStackTrace();
             }
-
-        //     //4byte int
-        //     //ada protokol
-        //     //signature : 
-        //     // sha512, chunk size, hashing, file size
-
-            message.get(data);
-            fos.write(data);
-
-            if (isLast) {
-                logger.info("File received");
-                logger.info("FOS closed");
-                fos.close();
+            String json = message.substring(message.indexOf('~')+1);
+            ObjectMapper mapper = new ObjectMapper();
+            try{
+                PreMetadata preMD = mapper.readValue(json, PreMetadata.class);
+                this.fileSize = preMD.getFileSize();
+                this.chunkSize = preMD.getChunkSize();
+                this.fileBytes = new byte[(int)this.fileSize];
+                this.readyToReceiveFile = true;
+                logger.info("RECEIVED META DATA");
+                send("READY-FILE~");
+            } catch(Exception e){
+                e.printStackTrace();
             }
-        } catch (Exception e) {
-            logger.error("Error occured during receiving file");
-            e.printStackTrace();
+        }
+        else if(message.startsWith("POST-METADATA~")){
+            logger.info("RECEIVED POST META DATA");
+            String json = message.substring(message.indexOf('~')+1);
+            ObjectMapper mapper = new ObjectMapper();
+            try{
+                PostMetadata postMD = mapper.readValue(json, PostMetadata.class);
+
+                Path filePath = Paths.get(postMD.getFileName());
+                String user = postMD.getUser();
+                String hashedServer = postMD.getSignature();
+
+                Set<AclEntryPermission> permissions = postMD.getAclEntry();
+
+                String hashedClient = Hashing.sha256().hashBytes(fileBytes).toString();
+
+                if(hashedClient.equals(hashedServer)){
+                    logger.info("FILE VERIFIED");
+                }
+                else{
+                    toBeReceived.toFile().delete();
+                    logger.info("FILE NOT CORRUPTED");
+                    return;
+                }
+                // file rename
+                // sourcePath is created beforehand
+                Files.move(toBeReceived, filePath, StandardCopyOption.REPLACE_EXISTING);
+
+                UserPrincipal userPrincipal = filePath.getFileSystem().getUserPrincipalLookupService().lookupPrincipalByName(user);
+
+                AclFileAttributeView aclView = Files.getFileAttributeView(filePath, AclFileAttributeView.class);
+        
+                AclEntry aclEntry = AclEntry.newBuilder()
+                    .setType(AclEntryType.ALLOW)
+                    .setPrincipal(userPrincipal)
+                    .setFlags(AclEntryFlag.DIRECTORY_INHERIT, AclEntryFlag.FILE_INHERIT)
+                    .setPermissions(permissions)
+                    .build();
+        
+                List<AclEntry> acl = aclView.getAcl();
+                acl.add(0, aclEntry);
+                aclView.setAcl(acl);
+                logger.info("EVERYTHIGN OK");
+            } catch(Exception e){
+                e.printStackTrace();
+            }
         }
     }
+    
+    @Override
+    public void onMessage(ByteBuffer buffer) {
+        if (this.readyToReceiveFile) {
+            try{
+                byte[] data = new byte[buffer.remaining()];
+        
+                buffer.get(data);
 
-    // @Override
-    // public void onMessage(ByteBuffer message) {
-    // try {
-    // byte[] data = new byte[message.remaining()];
-    // logger.info("Received : " + message.remaining());
-    // message.get(data);
+                System.arraycopy(data, 0, fileBytes, currIdx, data.length);
+                this.currIdx += data.length;
 
-    // fos.write(data);
+                //TODO: Must check for signature first
+                if(this.currIdx == fileBytes.length){
+                    fos.write(fileBytes);
+                    fos.close();
 
-    // if(message.remaining() == 0){
-    // logger.info("File received");
-    // fos.close();
-    // }
-    // } catch (Exception e) {
-    // logger.error("error occured during receiving file");
-    // e.printStackTrace();
-    // }
-    // }
+                    this.readyToReceiveFile = false;
+                    this.currIdx = 0;
+                    send("FINISH-FILE~");
+                }
+            } catch(Exception e){
+                e.printStackTrace();
+            }
+        }
+    }
 
     @Override
     public void onClose(int code, String reason, boolean remote) {
@@ -124,9 +161,4 @@ public class EmptyClient extends WebSocketClient {
     public void onError(Exception ex) {
         System.err.println("an error occurred:" + ex);
     }
-
-    // @Override
-    // public void onPing(ByteBuffer ping) {
-    //     System.out.println("pinged");
-    // }
 }
