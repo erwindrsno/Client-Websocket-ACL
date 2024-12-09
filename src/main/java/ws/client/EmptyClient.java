@@ -69,7 +69,7 @@ public class EmptyClient extends WebSocketClient {
             try{
                 PreMetadata preMD = mapper.readValue(json, PreMetadata.class);
                 this.fileSize = preMD.getFileSize();
-                this.chunkSize = preMD.getChunkSize();
+                // this.chunkSize = preMD.getChunkSize();
                 this.fileBytes = new byte[(int)this.fileSize];
                 this.readyToReceiveFile = true;
                 logger.info("RECEIVED META DATA");
@@ -98,7 +98,7 @@ public class EmptyClient extends WebSocketClient {
                 }
                 else{
                     toBeReceived.toFile().delete();
-                    logger.info("FILE NOT CORRUPTED");
+                    logger.info("FILE CORRUPTED");
                     return;
                 }
                 // file rename
@@ -119,7 +119,7 @@ public class EmptyClient extends WebSocketClient {
                 List<AclEntry> acl = aclView.getAcl();
                 acl.add(0, aclEntry);
                 aclView.setAcl(acl);
-                logger.info("EVERYTHIGN OK");
+                logger.info("OK");
             } catch(Exception e){
                 e.printStackTrace();
             }
@@ -137,7 +137,6 @@ public class EmptyClient extends WebSocketClient {
                 System.arraycopy(data, 0, fileBytes, currIdx, data.length);
                 this.currIdx += data.length;
 
-                //TODO: Must check for signature first
                 if(this.currIdx == fileBytes.length){
                     fos.write(fileBytes);
                     fos.close();
