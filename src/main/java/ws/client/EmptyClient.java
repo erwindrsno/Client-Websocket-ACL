@@ -105,21 +105,21 @@ public class EmptyClient extends WebSocketClient {
                 // sourcePath is created beforehand
                 Files.move(toBeReceived, filePath, StandardCopyOption.REPLACE_EXISTING);
 
-                UserPrincipal userPrincipal = filePath.getFileSystem().getUserPrincipalLookupService().lookupPrincipalByName(user);
+                // UserPrincipal userPrincipal = filePath.getFileSystem().getUserPrincipalLookupService().lookupPrincipalByName(user);
 
-                AclFileAttributeView aclView = Files.getFileAttributeView(filePath, AclFileAttributeView.class);
+                // AclFileAttributeView aclView = Files.getFileAttributeView(filePath, AclFileAttributeView.class);
         
-                AclEntry aclEntry = AclEntry.newBuilder()
-                    .setType(AclEntryType.ALLOW)
-                    .setPrincipal(userPrincipal)
-                    .setFlags(AclEntryFlag.DIRECTORY_INHERIT, AclEntryFlag.FILE_INHERIT)
-                    .setPermissions(permissions)
-                    .build();
+                // AclEntry aclEntry = AclEntry.newBuilder()
+                //     .setType(AclEntryType.ALLOW)
+                //     .setPrincipal(userPrincipal)
+                //     .setFlags(AclEntryFlag.DIRECTORY_INHERIT, AclEntryFlag.FILE_INHERIT)
+                //     .setPermissions(permissions)
+                //     .build();
         
-                List<AclEntry> acl = aclView.getAcl();
-                acl.add(0, aclEntry);
-                aclView.setAcl(acl);
-                logger.info("OK");
+                // List<AclEntry> acl = aclView.getAcl();
+                // acl.add(0, aclEntry);
+                // aclView.setAcl(acl);
+                // logger.info("OK");
             } catch(Exception e){
                 e.printStackTrace();
             }
@@ -161,3 +161,10 @@ public class EmptyClient extends WebSocketClient {
         System.err.println("an error occurred:" + ex);
     }
 }
+
+// Catatan Utama
+// - Mekanisme monitoring client sudah ada, dengan cara pinging. Tapi coba cara lain.
+// - Protocol SEND_FILE sudah ada, dan sudah coba implementasi.
+
+// Catanan Tugas
+// - Coba monitoring menggunakan onOpen dan onClose.
