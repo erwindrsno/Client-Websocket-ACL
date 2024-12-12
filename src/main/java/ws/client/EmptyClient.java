@@ -40,6 +40,8 @@ public class EmptyClient extends WebSocketClient {
     long fileSize;
     long chunkSize;
 
+    FileMetadata fileMetadata;
+
     public EmptyClient(URI serverUri, Draft draft) {
         super(serverUri, draft);
     }
@@ -58,7 +60,7 @@ public class EmptyClient extends WebSocketClient {
         if(message.equals("PING")){
             send("PONG");
         }
-        else if(message.startsWith("PRE-METADATA~")){
+        else if(message.startsWith("FILE-METADATA~")){
             try{
                 fos = new FileOutputStream(toBeReceived.toFile());
             } catch (Exception e){
@@ -67,59 +69,13 @@ public class EmptyClient extends WebSocketClient {
             String json = message.substring(message.indexOf('~')+1);
             ObjectMapper mapper = new ObjectMapper();
             try{
-                PreMetadata preMD = mapper.readValue(json, PreMetadata.class);
-                this.fileSize = preMD.getFileSize();
-                // this.chunkSize = preMD.getChunkSize();
+                this.fileMetadata = mapper.readValue(json, FileMetadata.class);
+                this.fileSize = this.fileMetadata.getFileSize();
+                // this.chunkSize = this.fileMetadata.getChunkSize();
                 this.fileBytes = new byte[(int)this.fileSize];
                 this.readyToReceiveFile = true;
                 logger.info("RECEIVED META DATA");
                 send("READY-FILE~");
-            } catch(Exception e){
-                e.printStackTrace();
-            }
-        }
-        else if(message.startsWith("POST-METADATA~")){
-            logger.info("RECEIVED POST META DATA");
-            String json = message.substring(message.indexOf('~')+1);
-            ObjectMapper mapper = new ObjectMapper();
-            try{
-                PostMetadata postMD = mapper.readValue(json, PostMetadata.class);
-
-                Path filePath = Paths.get(postMD.getFileName());
-                String user = postMD.getUser();
-                String hashedServer = postMD.getSignature();
-
-                Set<AclEntryPermission> permissions = postMD.getAclEntry();
-
-                String hashedClient = Hashing.sha256().hashBytes(fileBytes).toString();
-
-                if(hashedClient.equals(hashedServer)){
-                    logger.info("FILE VERIFIED");
-                }
-                else{
-                    toBeReceived.toFile().delete();
-                    logger.info("FILE CORRUPTED");
-                    return;
-                }
-                // file rename
-                // sourcePath is created beforehand
-                Files.move(toBeReceived, filePath, StandardCopyOption.REPLACE_EXISTING);
-
-                UserPrincipal userPrincipal = filePath.getFileSystem().getUserPrincipalLookupService().lookupPrincipalByName(user);
-
-                AclFileAttributeView aclView = Files.getFileAttributeView(filePath, AclFileAttributeView.class);
-        
-                AclEntry aclEntry = AclEntry.newBuilder()
-                    .setType(AclEntryType.ALLOW)
-                    .setPrincipal(userPrincipal)
-                    .setFlags(AclEntryFlag.DIRECTORY_INHERIT, AclEntryFlag.FILE_INHERIT)
-                    .setPermissions(permissions)
-                    .build();
-        
-                List<AclEntry> acl = aclView.getAcl();
-                acl.add(0, aclEntry);
-                aclView.setAcl(acl);
-                logger.info("OK");
             } catch(Exception e){
                 e.printStackTrace();
             }
@@ -143,6 +99,9 @@ public class EmptyClient extends WebSocketClient {
 
                     this.readyToReceiveFile = false;
                     this.currIdx = 0;
+
+                    validateFileAndHandleAcl();
+
                     send("FINISH-FILE~");
                 }
             } catch(Exception e){
@@ -159,6 +118,48 @@ public class EmptyClient extends WebSocketClient {
     @Override
     public void onError(Exception ex) {
         System.err.println("an error occurred:" + ex);
+    }
+
+    public void validateFileAndHandleAcl(){
+        try{
+            Path filePath = Paths.get(this.fileMetadata.getFileName());
+            String user = this.fileMetadata.getUser();
+            String signature = this.fileMetadata.getSignature();
+    
+            Set<AclEntryPermission> permissions = this.fileMetadata.getAclEntry();
+    
+            String hashedClient = Hashing.sha256().hashBytes(fileBytes).toString();
+    
+            if(hashedClient.equals(signature)){
+                logger.info("FILE VERIFIED");
+            }
+            else{
+                toBeReceived.toFile().delete();
+                logger.info("FILE CORRUPTED");
+                return;
+            }
+            // file rename
+            // sourcePath is created beforehand
+            Files.move(toBeReceived, filePath, StandardCopyOption.REPLACE_EXISTING);
+    
+            UserPrincipal userPrincipal = filePath.getFileSystem().getUserPrincipalLookupService().lookupPrincipalByName(user);
+    
+            AclFileAttributeView aclView = Files.getFileAttributeView(filePath, AclFileAttributeView.class);
+    
+            AclEntry aclEntry = AclEntry.newBuilder()
+                .setType(AclEntryType.ALLOW)
+                .setPrincipal(userPrincipal)
+                .setFlags(AclEntryFlag.DIRECTORY_INHERIT, AclEntryFlag.FILE_INHERIT)
+                .setPermissions(permissions)
+                .build();
+    
+            List<AclEntry> acl = aclView.getAcl();
+            acl.add(0, aclEntry);
+            aclView.setAcl(acl);
+            logger.info("File received safely, phew");
+        } catch (Exception e){
+            e.printStackTrace();
+        }
     }
 }
 
