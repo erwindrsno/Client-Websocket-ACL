@@ -28,10 +28,10 @@ import org.slf4j.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.hash.Hashing;
 
-public class EmptyClient extends WebSocketClient {
+public class Client extends WebSocketClient {
     Path toBeReceived = Paths.get("toBeReceived");
     FileOutputStream fos;
-    Logger logger = LoggerFactory.getLogger(EmptyClient.class);
+    Logger logger = LoggerFactory.getLogger(Client.class);
 
     boolean readyToReceiveFile = false;
 
@@ -42,11 +42,11 @@ public class EmptyClient extends WebSocketClient {
 
     FileMetadata fileMetadata;
 
-    public EmptyClient(URI serverUri, Draft draft) {
+    public Client(URI serverUri, Draft draft) {
         super(serverUri, draft);
     }
 
-    public EmptyClient(URI serverURI) {
+    public Client(URI serverURI) {
         super(serverURI);
     }
 
